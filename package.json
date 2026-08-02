@@ -1,0 +1,15 @@
+{
+  "name": "kache-poc",
+  "version": "1.0.0",
+  "description": "[kache](https://github.com/kunobi-ninja/kache) が Rust の `target/` 肥大化を防げるかを macOS (APFS) 上で検証したリポジトリです。",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "zenn-cli": "^0.2.3"
+  }
+}

@@ -1,3 +1,10 @@
 target/
 Cargo.lock
 .DS_Store
+
+# Node / Zenn CLI
+node_modules/
+.next/
+
+# Worktrees created during kache verification (transient)
+app1-wt-*/

@@ -2,9 +2,9 @@
 
 アプリ間・worktree 間の実ディスク共有を macOS (APFS) で実測した。
 
-`kache 0.12.0` · `cargo 1.92.0` · `Darwin 25.3.0 (APFS)`
+`kache 0.12.0` · `cargo 1.97.1` · `Darwin 25.3.0 (APFS)`
 
-> **結論:** 両ケースで成立する。kache は APFS reflink を使い、同じ crate/version の `.rlib` を store に 1 部だけ持ち、各 `target/` の中身は store の blob と物理ブロックを共有する。25 MB の `target/deps` を消しても、実ディスクは 3.8 MB しか解放されなかった。
+> **結論:** 両ケースで成立する。kache は APFS reflink を使い、同じ crate/version の `.rlib` を store に 1 部だけ持ち、各 `target/` の中身は store の blob と物理ブロックを共有する。26 MB の `target/deps` を消しても、実ディスクは 4.1 MB しか解放されなかった。
 
 ## ケース 1: app1 と app2 が同じ crate を使う
 
@@ -12,9 +12,9 @@ app1 と app2 は別ディレクトリの独立した Cargo プロジェクト�
 
 | 指標 | 値 | 備考 |
 |---|---|---|
-| app1 cold build | **11.22 s** | 初回、store は空 |
-| app2 warm build | **1.14 s** | app1 と同じ依存 → 全部 cache hit |
-| store サイズ | **24.6 MB** | app1/app2 で共有、追加コピーなし |
+| app1 cold build | **2.92 s** | 初回、store は空 |
+| app2 warm build | **1.03 s** | app1 と同じ依存 → 全部 cache hit |
+| store サイズ | **25.4 MB** | app1/app2 で共有、追加コピーなし |
 
 ### reflink の指紋を確認
 
@@ -22,9 +22,9 @@ app1 と app2 は別ディレクトリの独立した Cargo プロジェクト�
 
 | 場所 | SHA-256 | inode | link count |
 |---|---|---:|---:|
-| `app1/target/…/libanyhow-*.rlib` | `d0e0f88d…` | 77584989 | 1 |
-| `app2/target/…/libanyhow-*.rlib` | `d0e0f88d…` | 77585541 | 1 |
-| `store/blobs/91/9173dc3e…` | `d0e0f88d…` | 77584999 | 1 |
+| `app1/target/…/libanyhow-*.rlib` | `5cddf8de…` | 77809861 | 1 |
+| `app2/target/…/libanyhow-*.rlib` | `5cddf8de…` | 77810279 | 1 |
+| `store/blobs/72/7245120f…` | `5cddf8de…` | 77809869 | 1 |
 
 3 つとも内容は同一だが inode は別。link count = 1 なので hardlink ではない。「異なる inode + 同一内容 + link=1」は APFS reflink (CoW clone) の指紋である。
 
@@ -34,11 +34,11 @@ app2 の `target/` を丸ごと削除して、実際の空き容量が何 KB 増
 
 | 指標 | 値 |
 |---|---:|
-| 削除した `target/` の論理サイズ (`du`) | 25 MB (~25,600 KB) |
-| 削除後に `df` で観測された解放量 | **3,884 KB** |
-| 差 = store と reflink 共有されていた分 | ~21 MB |
+| 削除した `target/` の論理サイズ (`du`) | 26 MB (~26,624 KB) |
+| 削除後に `df` で観測された解放量 | **4,088 KB** |
+| 差 = store と reflink 共有されていた分 | ~22 MB |
 
-3.8 MB の解放は、kache がキャッシュしない `app2` 本体の実行バイナリ、build script の出力、`.d`/fingerprint ファイル分だと考えられる (`cache_executables=false` がデフォルト)。
+4.1 MB の解放は、kache がキャッシュしない `app2` 本体の実行バイナリ、build script の出力、`.d`/fingerprint ファイル分だと考えられる (`cache_executables=false` がデフォルト)。
 
 ## ケース 2: app1 の worktree 2 個が同じ crate を使う
 
@@ -46,17 +46,17 @@ app1 を git 化し、`git worktree add` で 2 つの worktree (`app1-wt-a`, `ap
 
 | 指標 | 値 | 備考 |
 |---|---|---|
-| `app1-wt-a` build | **0.98 s** | store には既に blob あり |
-| `app1-wt-b` build | **0.98 s** | 同上 |
+| `app1-wt-a` build | **0.93 s** | store には既に blob あり |
+| `app1-wt-b` build | **0.87 s** | 同上 |
 | store 追加量 | **0 MB** | 既存 blob をそのまま参照 |
 
 ### 両 worktree の `target/` を消したときの実解放
 
 | 指標 | 値 |
 |---|---:|
-| 2 つの `target/deps` の論理サイズ合計 | ~50 MB |
-| 両方削除後に `df` で観測された解放量 | **7,576 KB** |
-| 差 = store と reflink 共有されていた分 | ~42 MB |
+| 2 つの `target/deps` の論理サイズ合計 | ~52 MB |
+| 両方削除後に `df` で観測された解放量 | **8,124 KB** |
+| 差 = store と reflink 共有されていた分 | ~44 MB |
 
 worktree を増やしても、cargo が作る `target/` のうち rustc アーティファクト部分は store と物理ブロックを共有するので、実ディスクはほぼ増えない。
 
@@ -66,7 +66,7 @@ worktree を増やしても、cargo が作る `target/` のうち rustc アー�
 # どの target/ の .rlib も、実データは 1 つの store blob を指す
 
 app1/target/…/libanyhow-*.rlib   ─┐
-app2/target/…/libanyhow-*.rlib   ─┼──▶   ~/Library/Caches/kache/store/blobs/91/9173dc3e…
+app2/target/…/libanyhow-*.rlib   ─┼──▶   ~/Library/Caches/kache/store/blobs/72/7245120f…
 app1-wt-a/target/…/libanyhow…    ─┤       (APFS 上、物理ブロックは 1 部だけ)
 app1-wt-b/target/…/libanyhow…    ─┘
 ```
@@ -80,8 +80,8 @@ app1-wt-b/target/…/libanyhow…    ─┘
 ```
 50.0% hit rate — 8/16 cacheable crates cached, 8 compiled
 Storage:
-  Restored: 24.6 MB (100.0% zero-copy, 0 B copied)
-  Store: 24.6 MB logical -> 24.6 MB blobs (0 B dedup saved)
+  Restored: 25.4 MB (100.0% zero-copy, 0 B copied)
+  Store: 25.4 MB logical -> 25.4 MB blobs (0 B dedup saved)
 ```
 
 **100.0% zero-copy** = 復元は 1 バイトもコピーせずすべて reflink で済んだ、という意味。
@@ -114,7 +114,7 @@ BEFORE=$(df -k /Users | awk 'NR==2{print $4}')
 rm -rf app2/target
 sync
 AFTER=$(df -k /Users | awk 'NR==2{print $4}')
-echo "freed KB: $((AFTER - BEFORE))"   # 論理 25 MB に対し 3–4 MB のはず
+echo "freed KB: $((AFTER - BEFORE))"   # 論理 26 MB に対し 4–5 MB のはず
 ```
 
 詳しくは [README.md](./README.md) を参照。
