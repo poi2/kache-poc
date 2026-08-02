@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>kache 検証レポート — target/ 肥大化は防げるか</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --fg: #1c1917;
+    --muted: #78716c;
+    --card: #ffffff;
+    --border: #e7e5e4;
+    --accent: #0d9488;
+    --accent-bg: #ccfbf1;
+    --warn: #b45309;
+    --code-bg: #f5f5f4;
+    --shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c0a09;
+      --fg: #f5f5f4;
+      --muted: #a8a29e;
+      --card: #1c1917;
+      --border: #292524;
+      --accent: #2dd4bf;
+      --accent-bg: #134e4a;
+      --warn: #fbbf24;
+      --code-bg: #1c1917;
+      --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0c0a09; --fg: #f5f5f4; --muted: #a8a29e; --card: #1c1917;
+    --border: #292524; --accent: #2dd4bf; --accent-bg: #134e4a; --warn: #fbbf24;
+    --code-bg: #1c1917;
+    --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+  }
+  :root[data-theme="light"] {
+    --bg: #fafaf9; --fg: #1c1917; --muted: #78716c; --card: #ffffff;
+    --border: #e7e5e4; --accent: #0d9488; --accent-bg: #ccfbf1; --warn: #b45309;
+    --code-bg: #f5f5f4;
+    --shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    line-height: 1.65;
+    margin: 0;
+    padding: 2rem 1rem;
+    font-size: 15px;
+  }
+  main {
+    max-width: 820px;
+    margin: 0 auto;
+  }
+  header {
+    margin-bottom: 2.5rem;
+  }
+  h1 {
+    font-size: 1.85rem;
+    line-height: 1.25;
+    margin: 0 0 0.5rem;
+    letter-spacing: -0.02em;
+  }
+  h2 {
+    font-size: 1.25rem;
+    margin: 2.5rem 0 1rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+    letter-spacing: -0.01em;
+  }
+  h3 {
+    font-size: 1.02rem;
+    margin: 1.6rem 0 0.6rem;
+    color: var(--fg);
+  }
+  p { margin: 0.6rem 0; }
+  .subtitle { color: var(--muted); font-size: 0.95rem; margin-bottom: 0.5rem; }
+  .meta { color: var(--muted); font-size: 0.85rem; }
+  .meta code { background: transparent; padding: 0; }
+
+  code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.88em;
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    padding: 0.9rem 1rem;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.55;
+  }
+  pre code { background: transparent; padding: 0; }
+
+  .verdict {
+    background: var(--accent-bg);
+    color: var(--fg);
+    border-left: 3px solid var(--accent);
+    padding: 1rem 1.2rem;
+    border-radius: 4px;
+    margin: 1rem 0 2rem;
+  }
+  .verdict strong { color: var(--accent); font-weight: 600; }
+
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 0.9rem;
+    margin: 1.2rem 0;
+  }
+  .kpi {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.1rem;
+    box-shadow: var(--shadow);
+  }
+  .kpi-label {
+    color: var(--muted);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.4rem;
+  }
+  .kpi-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .kpi-note {
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin-top: 0.35rem;
+  }
+
+  .table-wrap { overflow-x: auto; margin: 1rem 0; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  th, td {
+    text-align: left;
+    padding: 0.6rem 0.85rem;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    background: var(--code-bg);
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+  }
+  tr:last-child td { border-bottom: none; }
+  td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  td .highlight {
+    background: var(--accent-bg);
+    color: var(--fg);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 600;
+  }
+
+  ul { padding-left: 1.3rem; }
+  ul li { margin: 0.35rem 0; }
+
+  .diagram {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1.2rem 1rem;
+    margin: 1rem 0;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--fg);
+  }
+  .diagram .arrow { color: var(--accent); font-weight: 600; }
+  .diagram .note  { color: var(--muted); }
+
+  footer {
+    margin-top: 3.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>kache は Rust の <code>target/</code> 肥大化を防げるか</h1>
+  <p class="subtitle">アプリ間・worktree 間の実ディスク共有を macOS (APFS) で実測した</p>
+  <p class="meta">kache 0.12.0 · cargo 1.92.0 · Darwin 25.3.0 (APFS)</p>
+</header>
+
+<section>
+  <div class="verdict">
+    <p><strong>結論:</strong> 両ケースで成立する。kache は APFS reflink を使い、同じ crate/version の <code>.rlib</code> を store に 1 部だけ持ち、各 <code>target/</code> の中身は store の blob と物理ブロックを共有する。25 MB の <code>target/deps</code> を消しても、実ディスクは 3.8 MB しか解放されなかった。</p>
+  </div>
+</section>
+
+<section>
+  <h2>ケース 1: app1 と app2 が同じ crate を使う</h2>
+  <p>app1 と app2 は別ディレクトリの独立した Cargo プロジェクト。両者とも <code>serde = "1.0.219"</code> と <code>anyhow = "1.0.100"</code> に依存させた。</p>
+
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="kpi-label">app1 cold build</div>
+      <div class="kpi-value">11.22 s</div>
+      <div class="kpi-note">初回、store は空だった</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">app2 warm build</div>
+      <div class="kpi-value">1.14 s</div>
+      <div class="kpi-note">app1 と同じ依存 → 全部 cache hit</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">store サイズ</div>
+      <div class="kpi-value">24.6 MB</div>
+      <div class="kpi-note">app1/app2 で共有、追加コピーなし</div>
+    </div>
+  </div>
+
+  <h3>reflink の指紋を確認</h3>
+  <p>3 か所 (app1 / app2 / store) の <code>libanyhow-*.rlib</code> を比較。</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>場所</th><th>SHA-256</th><th>inode</th><th>link count</th></tr></thead>
+    <tbody>
+      <tr><td>app1/target/…/libanyhow-*.rlib</td><td><code>d0e0f88d…</code></td><td class="num">77584989</td><td class="num">1</td></tr>
+      <tr><td>app2/target/…/libanyhow-*.rlib</td><td><code>d0e0f88d…</code></td><td class="num">77585541</td><td class="num">1</td></tr>
+      <tr><td>store/blobs/91/9173dc3e…</td><td><code>d0e0f88d…</code></td><td class="num">77584999</td><td class="num">1</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>3 つとも内容は同一だが inode は別。link count = 1 なので hardlink ではない。「異なる inode + 同一内容 + link=1」は APFS reflink (CoW clone) の指紋である。</p>
+
+  <h3>物理ディスク共有の実測</h3>
+  <p>app2 の <code>target/</code> を丸ごと削除して、実際の空き容量が何 KB 増えるかを見た。</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>指標</th><th>値</th></tr></thead>
+    <tbody>
+      <tr><td>削除した <code>target/</code> の論理サイズ (<code>du</code>)</td><td class="num">25 MB (~25,600 KB)</td></tr>
+      <tr><td>削除後に <code>df</code> で観測された解放量</td><td class="num"><span class="highlight">3,884 KB</span></td></tr>
+      <tr><td>差 = store と reflink 共有されていた分</td><td class="num">~21 MB</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>3.8 MB の解放は、kache がキャッシュしない <code>app2</code> 本体の実行バイナリ、build script の出力、<code>.d</code>/fingerprint ファイル分だと考えられる (<code>cache_executables=false</code> がデフォルト)。</p>
+</section>
+
+<section>
+  <h2>ケース 2: app1 の worktree 2 個が同じ crate を使う</h2>
+  <p>app1 を git 化し、<code>git worktree add</code> で 2 つの worktree (<code>app1-wt-a</code>, <code>app1-wt-b</code>) を作成。それぞれで <code>cargo build</code>。</p>
+
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="kpi-label">app1-wt-a build</div>
+      <div class="kpi-value">0.98 s</div>
+      <div class="kpi-note">store には既に blob あり</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">app1-wt-b build</div>
+      <div class="kpi-value">0.98 s</div>
+      <div class="kpi-note">同上</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">store 追加量</div>
+      <div class="kpi-value">0 MB</div>
+      <div class="kpi-note">既存 blob をそのまま参照</div>
+    </div>
+  </div>
+
+  <h3>両 worktree の <code>target/</code> を消したときの実解放</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>指標</th><th>値</th></tr></thead>
+    <tbody>
+      <tr><td>2 つの <code>target/deps</code> の論理サイズ合計</td><td class="num">~50 MB</td></tr>
+      <tr><td>両方削除後に <code>df</code> で観測された解放量</td><td class="num"><span class="highlight">7,576 KB</span></td></tr>
+      <tr><td>差 = store と reflink 共有されていた分</td><td class="num">~42 MB</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>worktree を増やしても、cargo が作る <code>target/</code> のうち rustc アーティファクト部分は store と物理ブロックを共有するので、実ディスクはほぼ増えない。</p>
+</section>
+
+<section>
+  <h2>参照関係のイメージ</h2>
+  <div class="diagram"><span class="note"># どの target/ の .rlib も、実データは 1 つの store blob を指す</span>
+
+  app1/target/…/libanyhow-*.rlib   <span class="arrow">─┐</span>
+  app2/target/…/libanyhow-*.rlib   <span class="arrow">─┼──▶</span>   ~/Library/Caches/kache/store/blobs/91/9173dc3e…
+  app1-wt-a/target/…/libanyhow…    <span class="arrow">─┤</span>       <span class="note">(APFS 上、物理ブロックは 1 部だけ)</span>
+  app1-wt-b/target/…/libanyhow…    <span class="arrow">─┘</span></div>
+  <p>各 <code>.rlib</code> は独立した inode を持ち、<code>ls</code> や <code>du</code> からは普通のファイルに見える。APFS が blocks を CoW 共有しているだけなので、書き換えたら自動的にブロックが分岐する。安全に「独立したファイル」として扱える。</p>
+</section>
+
+<section>
+  <h2>kache 自身のレポート</h2>
+  <p><code>kache report</code> の出力から抜粋。app1/app2 の連続ビルド直後。</p>
+<pre><code>50.0% hit rate — 8/16 cacheable crates cached, 8 compiled
+Storage:
+  Restored: 24.6 MB (100.0% zero-copy, 0 B copied)
+  Store: 24.6 MB logical -&gt; 24.6 MB blobs (0 B dedup saved)</code></pre>
+  <p><strong>100.0% zero-copy</strong> = 復元は 1 バイトもコピーせずすべて reflink で済んだ、という意味。</p>
+</section>
+
+<section>
+  <h2>実運用への含意</h2>
+  <ul>
+    <li>ローカルに複数の Cargo プロジェクトがあり、共通依存が多いほど kache の効果は大きい。同じ crate/version は store 上に 1 部だけ。</li>
+    <li>PR 用に worktree を並べる運用でも、<code>target/</code> は膨らみにくい。</li>
+    <li>bin crate 本体、build script 出力、<code>.d</code>/fingerprint はキャッシュされないので、<code>target/</code> の全部がゼロにはならない (実測で 3–4 MB / プロジェクト程度は残った)。</li>
+    <li>zero-copy 復元は APFS / btrfs / XFS-with-reflink でのみ効く。ext4 のような FS では hardlink または copy にフォールバック (README 参照)。</li>
+    <li>マシン間の共有は S3 or 共有 FS 経由の remote cache が必要。今回はローカルのみ検証した。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>再現手順の要点</h2>
+<pre><code># kache 導入
+brew install kunobi-ninja/kunobi/kache
+yes | kache purge
+
+# 検証環境
+export RUSTC_WRAPPER=kache
+export CARGO_INCREMENTAL=0   # kache がインクリメンタルを止める
+
+# ケース 1
+(cd app1 &amp;&amp; cargo build)   # cold
+(cd app2 &amp;&amp; cargo build)   # warm — 同じ依存
+
+# 実ディスク共有の確認
+BEFORE=$(df -k /Users | awk 'NR==2{print $4}')
+rm -rf app2/target
+sync
+AFTER=$(df -k /Users | awk 'NR==2{print $4}')
+echo "freed KB: $((AFTER - BEFORE))"   # 論理 25 MB に対し 3–4 MB のはず</code></pre>
+  <p>詳しくは <a href="./README.md">README.md</a> を参照。</p>
+</section>
+
+<footer>
+  <p>検証: 2026-08-02 · kache <a href="https://github.com/kunobi-ninja/kache">kunobi-ninja/kache</a></p>
+</footer>
+
+</main>
+</body>
+</html>
